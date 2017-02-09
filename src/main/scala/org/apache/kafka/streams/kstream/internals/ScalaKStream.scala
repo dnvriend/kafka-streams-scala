@@ -73,24 +73,29 @@ class ScalaKStream[K, V](topology: KStreamBuilder, name: String, sourceNodes: Se
     new ScalaKStream[K, V](topology, name, sourceNodes, repartitionRequired, dsl)
   }
 
-  //  def selectKey[K1](f: (K, V) => K1): KStream[K1, V] = super.selectKey(new KeyValueMapper[K, V, K1] {
-  //    override def apply(key: K, value: V): K1 = f(key, value)
-  //  })
+  def selectKey[K1](f: (K, V) => K1): ScalaKStream[K1, V] =
+    new ScalaKStream(topology, internalSelectKey(new KeyValueMapper[K, V, K1] {
+      override def apply(key: K, value: V): K1 = f(key, value)
+    }), sourceNodes, true, dsl)
 
-  //  def mapKeyAndValue[K1, V1](f: (K, V) => (K1, V1)): KStream[K1, V1] = super.map(new KeyValueMapper[K, V, KeyValue[K1, V1]] {
-  //    override def apply(key: K, value: V): KeyValue[K1, V1] = {
-  //      val tuple = f(key, value)
-  //      new KeyValue(tuple._1, tuple._2)
-  //    }
-  //  })
-  //
-  //  def mapKeyAndValueAsync[K1, V1](f: (K, V) => Future[(K1, V1)])(implicit ec: ExecutionContext, duration: Duration = 60.seconds): KStream[K1, V1] = super.map(new KeyValueMapper[K, V, KeyValue[K1, V1]] {
-  //    override def apply(key: K, value: V): KeyValue[K1, V1] = {
-  //      Await.result(f(key, value).map { tuple =>
-  //        new KeyValue(tuple._1, tuple._2)
-  //      }, duration)
-  //    }
-  //  })
+  private def internalSelectKey[K1](mapper: KeyValueMapper[K, V, K1]): String = {
+    val name = topology.newName(KEY_SELECT_NAME)
+    topology.addProcessor(name, new KStreamMap[K, V, K1, V](new KeyValueMapper[K, V, KeyValue[K1, V]]() {
+      def apply(key: K, value: V) = new KeyValue[K1, V](mapper.apply(key, value), value)
+    }), this.name)
+    name
+  }
+
+  def mapKeyAndValue[K1, V1](f: (K, V) => (K1, V1)): ScalaKStream[K1, V1] = {
+    val name = topology.newName(MAP_NAME)
+    topology.addProcessor(name, new KStreamMap[K, V, K1, V1](new KeyValueMapper[K, V, KeyValue[K1, V1]] {
+      override def apply(key: K, value: V): KeyValue[K1, V1] = {
+        val tuple = f(key, value)
+        new KeyValue[K1, V1](tuple._1, tuple._2)
+      }
+    }), this.name)
+    new ScalaKStream[K1, V1](topology, name, sourceNodes, true, dsl)
+  }
 
   def map[V1](f: V => V1): ScalaKStream[K, V1] = {
     val name = topology.newName(MAPVALUES_NAME)
@@ -102,6 +107,24 @@ class ScalaKStream[K, V](topology: KStreamBuilder, name: String, sourceNodes: Se
 
   def mapAsync[V1](f: V => Future[V1])(implicit ec: ExecutionContext, duration: Duration = 60.seconds): ScalaKStream[K, V1] =
     map(value => Await.result(f(value), duration))
+
+  def flatMap[K1, V1](f: (K, V) => Iterable[(K1, V1)]): ScalaKStream[K1, V1] = {
+    val name = topology.newName(FLATMAP_NAME)
+    topology.addProcessor(name, new KStreamFlatMap[K, V, K1, V1](new KeyValueMapper[K, V, java.lang.Iterable[KeyValue[K1, V1]]] {
+      override def apply(key: K, value: V): java.lang.Iterable[KeyValue[K1, V1]] = {
+        f(key, value).map(tuple => new KeyValue(tuple._1, tuple._2)).asJava
+      }
+    }), this.name)
+    new ScalaKStream[K1, V1](topology, name, sourceNodes, true, dsl)
+  }
+
+  def flatMapValues[V1](f: V => Iterable[V1]): ScalaKStream[K, V1] = {
+    val name = topology.newName(FLATMAPVALUES_NAME)
+    topology.addProcessor(name, new KStreamFlatMapValues[K, V, V1](new ValueMapper[V, java.lang.Iterable[V1]] {
+      override def apply(value: V): java.lang.Iterable[V1] = f(value).asJava
+    }), this.name)
+    new ScalaKStream[K, V1](topology, name, sourceNodes, repartitionRequired, dsl)
+  }
 
   def parseFromAvro[V1](implicit recordFormat: RecordFormat[V1]): ScalaKStream[K, V1] = map {
     case v: GenericRecord => recordFormat.from(v)

@@ -1,5 +1,5 @@
 # kafka-streams-scala
-A more fluent Scala API for [kafka-streams](https://www.confluent.io/blog/introducing-kafka-streams-stream-processing-made-simple/)
+A more fluent Scala API for [kafka-streams](http://docs.confluent.io/3.1.2/)
 
 ## Disclaimer
 This is work in progress
@@ -163,4 +163,7 @@ object KafkaConfig {
   }
 }
 ```
+
+## Resources
+- [kafka-streams javadoc](http://docs.confluent.io/3.1.2/streams/javadocs/index.html)
 
