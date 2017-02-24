@@ -16,11 +16,8 @@
 
 package org.apache.kafka.streams.kstream.internals
 
-import java.util.Collections
-
 import org.apache.kafka.streams.KafkaStreams
 import org.apache.kafka.streams.kstream.KStreamBuilder
-import org.apache.kafka.streams.state.internals.RocksDBKeyValueStoreSupplier
 
 object ScalaKStreamBuilder {
   def apply(config: java.util.Properties): ScalaKStreamBuilder = new ScalaKStreamBuilder(config)
@@ -40,19 +37,6 @@ class ScalaKStreamBuilder(config: java.util.Properties) extends KStreamBuilder {
     val name = super.newName(KStreamImpl.SOURCE_NAME)
     super.addSource(name, topics: _*)
     new ScalaKStream[K, V](this, name, Set(name), false, this)
-  }
-
-  def tableScalaDsl[K, V](topic: String, storeName: String): ScalaKTable[K, V] = {
-    val source: String = super.newName(KStreamImpl.SOURCE_NAME)
-    val name: String = super.newName(KTableImpl.SOURCE_NAME)
-    val processorSupplier = new KTableSource[K, V](storeName)
-    super.addSource(source, topic)
-    super.addProcessor(name, processorSupplier, source)
-    val kTable = new ScalaKTableImpl[K, Any, V](this, name, processorSupplier, Set(source), storeName, this)
-    val storeSupplier = new RocksDBKeyValueStoreSupplier[K, V](storeName, null, null, false, Collections.emptyMap[String, String], true)
-    super.addStateStore(storeSupplier, name)
-    super.connectSourceStoreAndTopic(storeName, topic)
-    kTable.asInstanceOf[ScalaKTable[K, V]]
   }
 
   def start(): Unit =
